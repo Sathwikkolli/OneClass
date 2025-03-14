@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 # import librosa
 
 class AudioSVMClassifier:
-    def __init__(self, speaker, base_directory, feature, gamma=0.001, nu=0.5):
+    def __init__(self, speaker, base_directory, feature, output_dir):
         """
         Initialize a speaker-specific instance of the classifier for a given feature.
         """
@@ -21,15 +21,24 @@ class AudioSVMClassifier:
 
         self.svm_model = None
         self.scaler = None
-        self.x_test_original = None
-        self.y_test_original = None
+        self.output_dir = None
+        self.speaker_output_dir = None
+        self.x_train = None
+        self.y_train = None
+        self.x_test = None
+        self.y_test = None
+        self.binary_y_test = None
+        self.y_pred = None
+
 
     def single_audio_feature_extraction(self, audio_path, model):
         """
         Extracts features from a single audio file using a given model.
         """
         audio_data, sample_rate = librosa.load(audio_path, sr=None)
+
         embedding = model.predict(audio_data)
+
         embedding = embedding.reshape(1, -1)
 
         return embedding
@@ -95,99 +104,87 @@ class AudioSVMClassifier:
         if x is None or y is None:
             return None, None
         
-        x_train, self.x_test_original, y_train, self.y_test_original = train_test_split(x, y, test_size=0.3)
+        self.x_train, x_test, self.y_train, y_test = train_test_split(x, y, test_size=0.3)
 
-        self.scaler = StandardScaler().fit(x_train)
-        # scaler = StandardScaler().fit(x_train)
+        self.scaler = StandardScaler().fit(self.x_train)
         
-        train_data_scaled = self.scaler.transform(x_train)
-        # train_data_scaled = scaler.transform(x_train)
+        train_data_scaled = self.scaler.transform(self.x_train)
 
-        print(f'the shape of the train data is {x_train.shape}')
+        print(f'the shape of the train data is {self.x_train.shape}')
 
         self.svm_model = svm.OneClassSVM(nu=self.nu, gamma=self.gamma, kernel='rbf')
-        # svm_model = svm.OneClassSVM(nu=self.nu, gamma=self.gamma, kernel='rbf')
         
         self.svm_model.fit(train_data_scaled)
-        # svm_model.fit(train_data_scaled)
+
+        self.speaker_output_dir = f"{self.output_dir}/{self.speaker}"
 
         # Save models and test data
-        # self.save_model(x_test, y_test)
-        self.save_model(self.x_test_original, self.y_test_original)
+        self.save_model(speaker_output_dir)
 
-        return self.x_test_original, self.y_test_original
+        # return self.x_test_original, self.y_test_original
 
-    def save_model(self, x_test, y_test):
+    def save_model(self, self.speaker_output_dir):
         """Save the trained SVM model and scaler."""
-        model_dir = f'new_svm_trained_models/{self.speaker}'
-        os.makedirs(f"{model_dir}/scaling_models", exist_ok=True)
-        os.makedirs(f"{model_dir}/svm_models", exist_ok=True)
-        os.makedirs(f"{model_dir}/x_test", exist_ok=True)
-        os.makedirs(f"{model_dir}/y_test", exist_ok=True)
+        os.makedirs(f"{self.speaker_output_dir}/scaling_models", exist_ok=True)
+        os.makedirs(f"{self.speaker_output_dir}/svm_models", exist_ok=True)
 
-        pickle.dump(self.scaler, open(f"{model_dir}/scaling_models/{self.feature}.pkl", 'wb'))
-        pickle.dump(self.svm_model, open(f"{model_dir}/svm_models/{self.feature}.pkl", 'wb'))
-
-        pickle.dump(x_test, open(f"{model_dir}/x_test/{self.feature}_x_test.pkl", 'wb'))
-        pickle.dump(y_test, open(f"{model_dir}/y_test/{self.feature}_y_test.pkl", 'wb'))
+        pickle.dump(self.scaler, open(f"{self.speaker_output_dir}/scaling_models/{self.feature}.pkl", 'wb'))
+        pickle.dump(self.svm_model, open(f"{self.speaker_output_dir}/svm_models/{self.feature}.pkl", 'wb'))
 
     def test(self, deepfake_path):
         """Test the trained model on deepfake data."""
-        deepfake_x_test, deepfake_y_test = self.read_pickle_files(deepfake_path, self.feature)
+        self.x_test, self.y_test = self.read_pickle_files(deepfake_path, self.feature)
         
-        if deepfake_x_test is None or deepfake_y_test is None:
+        if self.x_test is None or self.y_test is None:
             return None
 
         # Load saved models if not already in memory
         if self.scaler is None or self.svm_model is None:
             print('there are no scaler and svm models')
-            model_dir = f'new_svm_trained_models/{self.speaker}'
-            with open(f"{model_dir}/scaling_models/{self.feature}.pkl", 'rb') as f:
+
+            with open(f"{self.speaker_output_dir}/scaling_models/{self.feature}.pkl", 'rb') as f:
                 self.scaler = pickle.load(f)
-                # print(f' the scaler model is{self.scaler}')
-            with open(f"{model_dir}/svm_models/{self.feature}.pkl", 'rb') as f:
+
+            with open(f"{self.speaker_output_dir}/svm_models/{self.feature}.pkl", 'rb') as f:
                 self.svm_model = pickle.load(f)
                 
         # Scale the deepfake test data
-        scaled_deepfake_test = self.scaler.transform(deepfake_x_test)
-        deepfake_y_true = np.full(scaled_deepfake_test.shape[0], -1)  # Label -1 for deepfake
-        original_y_true = np.full(self.x_test_original.shape[0], 1)
-        x_test_combined = np.vstack((self.x_test_original, scaled_deepfake_test))
-        y_test_combined = np.concatenate((original_y_true, deepfake_y_true ), axis=0)
+        scaled_x_test = self.scaler.transform(self.x_test)
+        self.binary_y_test = np.full(scaled_x_test.shape[0], -1)  # Label -1 for deepfake
 
-        return self.evaluate_model(x_test_combined, y_test_combined)
+        self.y_pred = self.svm_model.predict(x_test)
 
-    def evaluate_model(self, test_data, test_labels):
+        return self.binary_y_test, self.y_pred
+
+    def evaluate_model(self, compute_accuracy=False, compute_auc=False, compute_conf_matrix=False):
+
+        results = {}
         """Evaluate model performance using confusion matrix, accuracy, and AUC."""
-        y_scores = self.svm_model.decision_function(test_data)
-        y_pred = self.svm_model.predict(test_data)
+        y_scores = self.svm_model.decision_function(self.x_test)
 
-        conf_mat = confusion_matrix(test_labels, y_pred)
-        TN, FP, FN, TP = conf_mat.ravel()
+        if compute_accuracy:
+            accuracy = round(accuracy_score(self.binary_y_test, y_pred) * 100, 2)
+            results['accuracy'] = accuracy
 
-        FPR = round((FP / (FP + TN)) * 100, 2)
-        FNR = round((FN / (FN + TP)) * 100, 2)
-        accuracy = round(accuracy_score(test_labels, y_pred) * 100, 2)
+        if compute_auc:
+            fpr, tpr, _ = roc_curve(self.binary_y_test, y_scores, pos_label=1)
+            auc_score = round(auc(fpr, tpr), 4)
+            results['auc'] = auc_score
 
-        fpr, tpr, _ = roc_curve(test_labels, y_scores, pos_label=1)
-        auc_score = round(auc(fpr, tpr), 4)
+        if compute_conf_matrix:
+            conf_mat = confusion_matrix(self.binary_y_test, self.y_pred)
+            TN, FP, FN, TP = conf_mat.ravel()
 
-        return {
-            "True Negative": TN, "False Positive": FP, 
-            "False Negative": FN, "True Positive": TP, 
-            "FPR": FPR, "FNR": FNR, "Accuracy": accuracy, "AUC": auc_score
-        }
+            FPR = round((FP / (FP + TN)) * 100, 2)
+            FNR = round((FN / (FN + TP)) * 100, 2)
+
+            results["confusion_matrix"] = conf_mat
+            results["false_positive_rate"] =  FPR
+            results["false_negative_rate"] = FNR
+
+        return results
+
 
     def process_single_file(self, file_path):
         """Process and extract features from a single file."""
         return self.load_feature_data(file_path)
-
-    # def process_multiple_directories(self, directories):
-    #     """Process multiple directories by calling process_single_file."""
-    #     results = {}
-    #     for directory in directories:
-    #         for file in os.listdir(directory):
-    #             if file.endswith(".pkl"):
-    #                 file_path = os.path.join(directory, file)
-    #                 results[file] = self.process_single_file(file_path)
-    #     return results
