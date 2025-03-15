@@ -15,13 +15,10 @@ class AudioSVMClassifier:
         """
         self.speaker = speaker
         self.feature = feature
-        self.gamma = gamma
-        self.nu = nu
         self.base_directory = base_directory
-
         self.svm_model = None
         self.scaler = None
-        self.output_dir = None
+        self.output_dir = output_dir
         self.speaker_output_dir = None
         self.x_train = None
         self.y_train = None
@@ -98,7 +95,7 @@ class AudioSVMClassifier:
 
         return features_array, labels_array
 
-    def train(self, feature_path):
+    def train(self, feature_path, nu, gamma):
         """Train an SVM model using original audio data."""
         x, y = self.read_pickle_files(feature_path, self.feature)
         if x is None or y is None:
@@ -109,21 +106,20 @@ class AudioSVMClassifier:
         self.scaler = StandardScaler().fit(self.x_train)
         
         train_data_scaled = self.scaler.transform(self.x_train)
-
-        print(f'the shape of the train data is {self.x_train.shape}')
-
-        self.svm_model = svm.OneClassSVM(nu=self.nu, gamma=self.gamma, kernel='rbf')
+        
+        self.svm_model = svm.OneClassSVM(nu=nu, gamma=gamma, kernel='rbf')
         
         self.svm_model.fit(train_data_scaled)
 
         self.speaker_output_dir = f"{self.output_dir}/{self.speaker}"
+        print(self.speaker_output_dir)
 
         # Save models and test data
-        self.save_model(speaker_output_dir)
+        self.save_model()
 
         # return self.x_test_original, self.y_test_original
 
-    def save_model(self, self.speaker_output_dir):
+    def save_model(self):
         """Save the trained SVM model and scaler."""
         os.makedirs(f"{self.speaker_output_dir}/scaling_models", exist_ok=True)
         os.makedirs(f"{self.speaker_output_dir}/svm_models", exist_ok=True)
@@ -152,7 +148,7 @@ class AudioSVMClassifier:
         scaled_x_test = self.scaler.transform(self.x_test)
         self.binary_y_test = np.full(scaled_x_test.shape[0], -1)  # Label -1 for deepfake
 
-        self.y_pred = self.svm_model.predict(x_test)
+        self.y_pred = self.svm_model.predict(scaled_x_test)
 
         return self.binary_y_test, self.y_pred
 
@@ -163,7 +159,7 @@ class AudioSVMClassifier:
         y_scores = self.svm_model.decision_function(self.x_test)
 
         if compute_accuracy:
-            accuracy = round(accuracy_score(self.binary_y_test, y_pred) * 100, 2)
+            accuracy = round(accuracy_score(self.binary_y_test, self.y_pred) * 100, 2)
             results['accuracy'] = accuracy
 
         if compute_auc:
@@ -183,7 +179,6 @@ class AudioSVMClassifier:
             results["false_negative_rate"] = FNR
 
         return results
-
 
     def process_single_file(self, file_path):
         """Process and extract features from a single file."""
