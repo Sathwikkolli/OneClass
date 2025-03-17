@@ -37,7 +37,7 @@ class AudioSVMClassifier:
         self.binary_y_test = None
         self.y_pred = None
 
-    def extract_features(self, file_path, aggregate_emb=True, layer_number=None):
+    def extract_features(self, file_path, aggregate_emb=False, layer_number=0):
         """
         Extract features from an audio file using the loaded S3PRL model.
         
@@ -123,7 +123,7 @@ class AudioSVMClassifier:
         self.svm_model.fit(train_data_scaled)
         print("SVM training completed.")
 
-    def train_svm_from_folder(self, folder_path, nu, gamma, aggregate_emb=True, layer_number=None):
+    def train_svm_from_folder(self, folder_path, nu, gamma, aggregate_emb=False, layer_number=0):
         """
         Extract features from all audio files in a given folder and train the SVM.
         
@@ -141,7 +141,7 @@ class AudioSVMClassifier:
             if filename.lower().endswith(valid_extensions):
                 file_path = os.path.join(folder_path, filename)
                 try:
-                    emb = self.extract_features(file_path, aggregate_emb=aggregate_emb, layer_number=layer_number)
+                    emb = self.extract_features(file_path)
                     # Ensure emb is a 2D array.
                     if emb.ndim == 1:
                         emb = emb.reshape(1, -1)
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     
     # Suppose we have a folder of audio files for training.
     training_folder = "/data/FF_V2/Famous_Figures/Donald_Trump/Original"  # Update this path to your folder
-    detector.train_svm_from_folder(training_folder, nu=0.1, gamma=0.1, aggregate_emb=False,layer_number=0)
+    detector.train_svm_from_folder(training_folder, nu=0.1, gamma=0.1,)
     
     # Optionally, save the trained scaler and SVM model for later use.
     saved_model_dir = "saved_model"
@@ -274,5 +274,5 @@ if __name__ == "__main__":
     
     # Example: Use the predict_from_audio method to predict on a new audio file.
     test_audio_file = "/data/FF_V2/Famous_Figures/Donald_Trump/spoof/Donald_Trump_00001_FISHSPEECH_616_0.5.wav"  # Update this path to your test file
-    prediction = detector.predict_from_audio(test_audio_file, aggregate_emb=True, load_model_dir=saved_model_dir)
+    prediction = detector.predict_from_audio(test_audio_file, load_model_dir=saved_model_dir)
     print("Prediction for the test audio file:", prediction)
