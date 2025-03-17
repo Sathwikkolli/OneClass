@@ -1,4 +1,4 @@
-name: test_gpu
+name: oneclasssvm
 channels:
   - conda-forge
   - defaults
