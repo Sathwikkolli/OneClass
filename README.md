@@ -4,4 +4,6 @@ This repository contains code for protecting famous figures from audio deepfake 
 
 
 environment install
-# conda env create -f environment.yml
+```ruby
+conda env create -f environment.yml
+```
