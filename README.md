@@ -8,10 +8,13 @@ conda env create -f environment.yml
 ```
 ## Installation
 
-Clone this repository to your workspace using the following command:
-
+# Clone this repository to your workspace using the following command:
 git clone https://github.com/issflab/speaker-specific-ASD.git
+
+# Create the conda environment from the provided YAML file:
 conda env create -f environment.yml
+
+# Activate the environment:
 conda activate oneclasssvm
 
 ### Tutorial
