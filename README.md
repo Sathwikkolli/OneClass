@@ -26,7 +26,7 @@ conda activate oneclasssvm
 
 ### Tutorial
 
-step 1: make sure to specify these parameters before running the code:
+make sure to specify these parameters before running the code:
 - **`base_directory`**: Path to the root data directory. Example: `project_root/data/feature_type`
 - **`feat_directory`**: Path to the speech-related feature representations. Example: `speech_feature_representation`
 - **`data_names`**: List of feature representation types. Example: `["ASV19", "CODEC2"]`
@@ -35,13 +35,10 @@ step 1: make sure to specify these parameters before running the code:
 - **`speakers`**: List of speakers. Example: `["Donald_Trump", "Joe_Biden"]`
 - **`deepfake`**: List of deepfake versions available for analysis.
 
-step 2: initialize the detector
-step 3: Train the SVM Model
-step 4: save the model
-step 5: predict with test Audio File
 
+### Feature Extraction Example:
+The code uses the S3PRLUpstream model to extract speech features from audio files. In this example, wavlm_large is used for feature extraction.
 
-## Feature Extraction Example:
 
 ```ruby
 from s3prl.nn import S3PRLUpstream
@@ -56,7 +53,8 @@ audio_path = "path_to_your_audio.wav"
 waveform, sample_rate = torchaudio.load(audio_path)
 ```
 
-## Training Example:
+### Training Example:
+You can train the SVM using extracted features from your audio dataset. The following example uses the train_svm_from_folder method:
 
 ```ruby
 from sklearn import svm
@@ -72,18 +70,10 @@ detector.train_svm_from_folder(training_folder, nu=0.1, gamma=0.1, aggregate_emb
 print("SVM Training Complete.")
 ```
 
-## Testing Example:
+### Testing Example:
+Once the model is trained, you can predict the label for a given audio sample using the predict_from_audio method.
+
 ```ruby
-# Save the trained model and scaler
-saved_model_dir = "saved_model"
-os.makedirs(saved_model_dir, exist_ok=True)
-
-with open(os.path.join(saved_model_dir, "scaling_model.pkl"), "wb") as f:
-    pickle.dump(detector.scaler, f)
-
-with open(os.path.join(saved_model_dir, "svm_model.pkl"), "wb") as f:
-    pickle.dump(detector.svm_model, f)
-
 # predict on a test audio fie
 test_audio_file = "/data/FF_V2/Famous_Figures/Donald_Trump/spoof/Donald_Trump_00001_FISHSPEECH_616_0.5.wav"
 prediction = detector.predict_from_audio(test_audio_file, aggregate_emb=True, load_model_dir=saved_model_dir)
