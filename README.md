@@ -24,9 +24,9 @@ conda env create -f environment.yml
 conda activate oneclasssvm
 ```
 
-
 ### Tutorial
 
+step 1: make sure to specify these parameters before running the code:
 - **`base_directory`**: Path to the root data directory. Example: `project_root/data/feature_type`
 - **`feat_directory`**: Path to the speech-related feature representations. Example: `speech_feature_representation`
 - **`data_names`**: List of feature representation types. Example: `["ASV19", "CODEC2"]`
@@ -35,6 +35,10 @@ conda activate oneclasssvm
 - **`speakers`**: List of speakers. Example: `["Donald_Trump", "Joe_Biden"]`
 - **`deepfake`**: List of deepfake versions available for analysis.
 
+step 2: initialize the detector
+step 3: Train the SVM Model
+step 4: save the model
+step 5: predict with test Audio File
 
 
 ## Folder Structure
