@@ -42,5 +42,19 @@ step 5: predict with test Audio File
 
 
 
+```ruby
+from s3prl.nn import S3PRLUpstream
+
+# Initialize the S3PRL model
+model_name = "wavlm_large"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+upstream_model = S3PRLUpstream(model_name).to(device)
+
+# Load an example audio file
+audio_path = "path_to_your_audio.wav"
+waveform, sample_rate = torchaudio.load(audio_path)
+```
+
+
 
 
