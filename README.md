@@ -85,6 +85,7 @@ with open(os.path.join(saved_model_dir, "svm_model.pkl"), "wb") as f:
     pickle.dump(detector.svm_model, f)
 
 ## Testing Example:
+```ruby
 test_audio_file = "/data/FF_V2/Famous_Figures/Donald_Trump/spoof/Donald_Trump_00001_FISHSPEECH_616_0.5.wav"
 prediction = detector.predict_from_audio(test_audio_file, aggregate_emb=True, load_model_dir=saved_model_dir)
 print("Prediction for the test audio file:", prediction)
