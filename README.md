@@ -41,19 +41,6 @@ step 4: save the model
 step 5: predict with test Audio File
 
 
-## Folder Structure
 
-project_root/
-│── data/
-│   ├── features_type/             
-│   │   ├── speech_feature_representation/ 
-│   │   │   ├── feature_representation_1/
-│   │   │   │   ├── train/            
-│   │   │   │   │   ├── speaker1/              
-│   │   │   │   │   │   ├── deepfake_1/       
-│   │   │   │   │   │   │   ├── feature_1/     
-│   │   │   │   │   │   ├── original/         
-│   │   │   │   │   │   │   ├── feature_1/
-│   │   ├── ...        
-│   │   │   │   │   ├── speaker2/             
+
 
