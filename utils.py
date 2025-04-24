@@ -6,6 +6,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn import svm
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_curve, auc
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import IsolationForest
+
 # import librosa
 
 class AudioSVMClassifier:
@@ -24,8 +26,11 @@ class AudioSVMClassifier:
         self.y_train = None
         self.x_test = None
         self.y_test = None
+        self.original_x_test = None
+        self.original_y_test = None
         self.binary_y_test = None
         self.y_pred = None
+        
 
 
     def single_audio_feature_extraction(self, audio_path, model):
@@ -95,24 +100,31 @@ class AudioSVMClassifier:
 
         return features_array, labels_array
 
-    def train(self, feature_path, nu, gamma):
+    def train(self, feature_path, nu, gamma, kernel_input, model=None):
+        
         """Train an SVM model using original audio data."""
         x, y = self.read_pickle_files(feature_path, self.feature)
         if x is None or y is None:
             return None, None
         
-        self.x_train, x_test, self.y_train, y_test = train_test_split(x, y, test_size=0.3)
+        self.x_train, self.original_x_test, self.y_train, self.original_y_test = train_test_split(x, y, test_size=0.3)
 
         self.scaler = StandardScaler().fit(self.x_train)
         
         train_data_scaled = self.scaler.transform(self.x_train)
+
+        if model=='OneClassSVM':
         
-        self.svm_model = svm.OneClassSVM(nu=nu, gamma=gamma, kernel='rbf')
+            self.svm_model = svm.OneClassSVM(nu=nu, gamma=gamma, kernel=kernel_input)
+
+        if model=='IsolationForest':
+            self.svm_model = IsolationForest(random_state=42, n_estimators=100, max_samples='auto', contamination=0.1)
+
+        
         
         self.svm_model.fit(train_data_scaled)
 
         self.speaker_output_dir = f"{self.output_dir}/{self.speaker}"
-        print(self.speaker_output_dir)
 
         # Save models and test data
         self.save_model()
@@ -127,7 +139,7 @@ class AudioSVMClassifier:
         pickle.dump(self.scaler, open(f"{self.speaker_output_dir}/scaling_models/{self.feature}.pkl", 'wb'))
         pickle.dump(self.svm_model, open(f"{self.speaker_output_dir}/svm_models/{self.feature}.pkl", 'wb'))
 
-    def test(self, deepfake_path):
+    def test(self, deepfake_path,include_original=False):
         """Test the trained model on deepfake data."""
         self.x_test, self.y_test = self.read_pickle_files(deepfake_path, self.feature)
         
@@ -145,10 +157,22 @@ class AudioSVMClassifier:
                 self.svm_model = pickle.load(f)
                 
         # Scale the deepfake test data
+        
+
+    
         scaled_x_test = self.scaler.transform(self.x_test)
         self.binary_y_test = np.full(scaled_x_test.shape[0], -1)  # Label -1 for deepfake
 
+
+        if include_original:
+            self.original_y_test = np.full(self.original_y_test.shape[0], 1)
+            scaled_x_test = np.concatenate((scaled_x_test, self.original_x_test), axis=0 )
+            self.binary_y_test = np.concatenate((self.binary_y_test, self.original_y_test), axis=0)
+
+            
         self.y_pred = self.svm_model.predict(scaled_x_test)
+
+
 
         return self.binary_y_test, self.y_pred
 

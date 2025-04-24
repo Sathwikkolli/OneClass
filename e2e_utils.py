@@ -167,6 +167,8 @@ class AudioSVMClassifier:
             tuple: (binary_y_test, y_pred) where binary_y_test are the true labels 
                    (set to -1 to denote anomalies) and y_pred are the SVM predictions.
         """
+
+        
         self.x_test = X
         scaled_x_test = self.scaler.transform(self.x_test)
         # For testing, we label all samples as -1 (anomaly), as typically expected in one-class SVM tests.
