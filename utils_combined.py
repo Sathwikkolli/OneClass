@@ -215,6 +215,7 @@ class AudioSVMClassifier:
         pickle.dump(self.scaler, open(f"{self.speaker_output_dir}/scaling_models/{self.feature}.pkl", 'wb'))
         pickle.dump(self.svm_model, open(f"{self.speaker_output_dir}/svm_models/{self.feature}.pkl", 'wb'))
 
+
     def predict_from_audio(self, file_path, aggregate_emb=True, layer_number=None, load_model_dir=None):
         """
         Takes an audio file, extracts its embedding, and sends it through the saved SVM model.
@@ -254,8 +255,9 @@ class AudioSVMClassifier:
         
         # Scale the embedding and predict using the SVM model.
         scaled_emb = self.scaler.transform(emb)
-        prediction = self.svm_model.predict(scaled_emb)
-        return prediction
+        prediction = self.svm_model.predict(scaled_emb)[0]
+        score = self.svm_model.decision_function(scaled_emb)[0]
+        return prediction, score
 
     def test(self, deepfake_path,include_original=False):
         """Test the trained model on deepfake data."""

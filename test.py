@@ -28,5 +28,6 @@ Trump_detector.scaler = joblib.load(scaling_model)
 Trump_detector.svm_model = joblib.load(svm_model)
 
 # Use the model to predict
-prediction = Trump_detector.predict_from_audio(test_audio_file, load_model_dir=None)  # don't reload here again
+prediction, score = Trump_detector.predict_from_audio(test_audio_file, load_model_dir=None)  # don't reload here again
 print("Prediction for the test audio file:", prediction)
+print("Score for the test audio file:", score)
