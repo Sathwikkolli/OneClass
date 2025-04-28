@@ -10,4 +10,4 @@ s3prl
 plotly
 kaleido
 seaborn
-scikit-learn
+scikit-learn==1.5.1
