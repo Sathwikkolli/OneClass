@@ -8,16 +8,16 @@ from sklearn.metrics import confusion_matrix, accuracy_score, roc_curve, auc
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import IsolationForest
 
-# import librosa
+import librosa
 
 class AudioSVMClassifier:
-    def __init__(self, speaker, base_directory, feature, output_dir):
+    def __init__(self, speaker, feature, output_dir):
         """
         Initialize a speaker-specific instance of the classifier for a given feature.
         """
         self.speaker = speaker
         self.feature = feature
-        self.base_directory = base_directory
+        # self.base_directory = base_directory
         self.svm_model = None
         self.scaler = None
         self.output_dir = output_dir
