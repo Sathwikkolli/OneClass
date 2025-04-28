@@ -2,7 +2,6 @@
 
 This repository contains code for protecting famous figures from audio deepfake attacks.
 
-```
 ## Installation
 
 Clone this repository to your workspace using the following command:
