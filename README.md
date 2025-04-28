@@ -72,18 +72,6 @@ waveform, sample_rate = torchaudio.load(audio_path)
 
 
 
-### Testing Example:
-Once the model is trained, you can predict the label for a given audio sample using the predict_from_audio method.
-
-```ruby
-# predict on a test audio fie
-test_audio_file = "/data/FF_V2/Famous_Figures/Donald_Trump/spoof/Donald_Trump_00001_FISHSPEECH_616_0.5.wav"
-prediction = detector.predict_from_audio(test_audio_file, aggregate_emb=True, load_model_dir=saved_model_dir)
-print("Prediction for the test audio file:", prediction)
-```
-
-
-
 
 
 
