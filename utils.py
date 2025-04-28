@@ -14,6 +14,7 @@ class AudioSVMClassifier:
     def __init__(self, speaker, feature, output_dir):
         """
         Initialize a speaker-specific instance of the classifier for a given feature.
+        TODO need to provide documentaion of the variables provided here 
         """
         self.speaker = speaker
         self.feature = feature
@@ -36,6 +37,7 @@ class AudioSVMClassifier:
     def single_audio_feature_extraction(self, audio_path, model):
         """
         Extracts features from a single audio file using a given model.
+        TODO need to provide documentaion of the variables provided here 
         """
         audio_data, sample_rate = librosa.load(audio_path, sr=None)
 
@@ -48,6 +50,7 @@ class AudioSVMClassifier:
     def Folder_audio_feature_extraction(self, speaker_folder_path, model):
         """
         Extracts features from all audio files in a given speaker's folder.
+        TODO need to provide documentaion of the variables provided here 
         """
         embeddings_list = []
 
@@ -66,7 +69,10 @@ class AudioSVMClassifier:
         return embeddings_array
 
     def load_feature_data(self, file_path):
-        """Load and process a pickle file containing audio features."""
+        """Load and process a pickle file containing audio features.
+        TODO need to provide documentaion of the variables provided here 
+        """
+        
         with open(file_path, 'rb') as f:
             feature_data = pickle.load(f)
 
@@ -78,7 +84,9 @@ class AudioSVMClassifier:
         return feature_data
 
     def read_pickle_files(self, feature_dir, label):
-        """Read pickle files and return feature arrays and labels."""
+        """Read pickle files and return feature arrays and labels.
+        TODO need to provide documentaion of the variables provided here 
+        """
         features, labels = [], []
         
         if not os.path.exists(feature_dir):
@@ -100,9 +108,10 @@ class AudioSVMClassifier:
 
         return features_array, labels_array
 
-    def train(self, feature_path, nu, gamma, kernel_input, model=None):
-        
-        """Train an SVM model using original audio data."""
+    def train(self, feature_path, nu, gamma):
+        """Train an SVM model using original audio data.
+        TODO need to provide documentaion of the variables provided here 
+        """
         x, y = self.read_pickle_files(feature_path, self.feature)
         if x is None or y is None:
             return None, None
@@ -139,8 +148,10 @@ class AudioSVMClassifier:
         pickle.dump(self.scaler, open(f"{self.speaker_output_dir}/scaling_models/{self.feature}.pkl", 'wb'))
         pickle.dump(self.svm_model, open(f"{self.speaker_output_dir}/svm_models/{self.feature}.pkl", 'wb'))
 
-    def test(self, deepfake_path,include_original=False):
-        """Test the trained model on deepfake data."""
+    def test(self, deepfake_path):
+        """Test the trained model on deepfake data.
+        TODO need to provide documentaion of the variables provided here 
+        """
         self.x_test, self.y_test = self.read_pickle_files(deepfake_path, self.feature)
         
         if self.x_test is None or self.y_test is None:
@@ -177,6 +188,9 @@ class AudioSVMClassifier:
         return self.binary_y_test, self.y_pred
 
     def evaluate_model(self, compute_accuracy=False, compute_auc=False, compute_conf_matrix=False):
+        '''
+        TODO need to provide documentaion of the variables provided here 
+        '''
 
         results = {}
         """Evaluate model performance using confusion matrix, accuracy, and AUC."""
@@ -207,3 +221,6 @@ class AudioSVMClassifier:
     def process_single_file(self, file_path):
         """Process and extract features from a single file."""
         return self.load_feature_data(file_path)
+    
+    # def test_single_file():
+
