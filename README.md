@@ -2,40 +2,24 @@
 
 This repository contains code for protecting famous figures from audio deepfake attacks.
 
-
-environment install
-```ruby
-conda env create -f environment.yml
 ```
 ## Installation
 
-#Clone this repository to your workspace using the following command:
+Clone this repository to your workspace using the following command:
 
-```ruby
+```
 git clone https://github.com/issflab/speaker-specific-ASD.git
 ```
 
-#Create the conda environment from the provided YAML file:
-```ruby
-conda env create -f environment.yml
+Create the conda environment from the provided YAML file:
+```
+conda env create -f environment.yaml
 ```
 
 #Activate the environment:
-```ruby
-conda activate oneclasssvm
 ```
-
-### Tutorial
-
-make sure to specify these parameters before running the code:
-- **`base_directory`**: Path to the root data directory. Example: `project_root/data/feature_type`
-- **`feat_directory`**: Path to the speech-related feature representations. Example: `speech_feature_representation`
-- **`data_names`**: List of feature representation types. Example: `["ASV19", "CODEC2"]`
-- **`data_types`**: Type of dataset (train or test). Example: `["train", "test"]`
-- **`features`**: List of feature names used for training or testing.
-- **`speakers`**: List of speakers. Example: `["Donald_Trump", "Joe_Biden"]`
-- **`deepfake`**: List of deepfake versions available for analysis.
-
+conda activate speaker-specific-asd
+```
 
 ### Feature Extraction Example:
 The code uses the S3PRLUpstream model to extract speech features from audio files. In this example, wavlm_large is used for feature extraction.

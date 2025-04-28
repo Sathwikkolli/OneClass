@@ -146,6 +146,7 @@ dmypy.json
 # audio files
 *.flac
 *.wav
+*.mp3
 
 # image files
 *.png
