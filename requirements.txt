@@ -1,7 +1,8 @@
 numpy
-torch
-torchaudio
+torch==2.8.0
+torchaudio==2.8.0
 transformers
+tokenizers
 librosa
 pandas
 wav2clip
@@ -10,5 +11,8 @@ s3prl
 plotly
 kaleido
 seaborn
-scikit-learn==1.5.1
+scikit-learn
 umap-learn
+pyannote.audio==4.0.3
+huggingface-hub
+git+https://github.com/wenet-e2e/wespeaker.git

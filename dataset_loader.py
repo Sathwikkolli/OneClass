@@ -5,6 +5,8 @@ import os
 import torch
 from torch import Tensor
 import librosa
+import torchaudio.functional as AF
+import random
 
 class AudioDataset(torch.utils.data.Dataset):
     # def __init__(self, protocol_paths, audio_dir, speaker_name, sep=','):
@@ -13,11 +15,10 @@ class AudioDataset(torch.utils.data.Dataset):
         audio_dir = config.audio_dir
         speaker_name = config.speaker_name
         sep = config.sep
+        required_cols = config.required_cols
         # Accepts a list or string for protocol files
         if isinstance(protocol_paths, str):
             protocol_paths = [protocol_paths]
-        
-        required_cols = ["Audio", "Label", "Speaker", "Source"]
         
         # If audio_dir is a list, require it to have same length as protocol_paths
         if isinstance(audio_dir, (list, tuple)):
@@ -68,10 +69,10 @@ class AudioDataset(torch.utils.data.Dataset):
         # file_path = os.path.join(self.audio_dir, row['filename'])
         file_path = row["Audio"]
         # waveform, sr = torchaudio.load(file_path)
-        X, fs = librosa.load(file_path, sr=16000)
+        X, fs = librosa.load(file_path, sr=16000, dtype=np.float32)
         
         X_pad= self.pad(X,self.cut)
-        x_inp= Tensor(X_pad)
+        x_inp= torch.from_numpy(X_pad)
 
         label = row.get('Label', None)
         attack_type = row.get('Source', None)
@@ -86,3 +87,141 @@ class AudioDataset(torch.utils.data.Dataset):
         num_repeats = int(max_len / x_len)+1
         padded_x = np.tile(x, (1, num_repeats))[:, :max_len][0]
         return padded_x	
+
+
+class BonaFideOnly(torch.utils.data.Dataset):
+    def __init__(self, base_dataset, bona_fide_label=1, split_value="train", split_col="split"):
+        self.base = base_dataset
+
+        # --- safety checks ---
+        if split_col not in self.base.meta.columns:
+            raise ValueError(
+                f"BonaFideOnly: split_col='{split_col}' not found in protocol. "
+                f"Available columns: {list(self.base.meta.columns)}"
+            )
+        
+        # Build mask infer indices that are bona fide and in the specified split`
+        labels = self.base.meta["Label"].astype(str)
+        splits = self.base.meta[split_col].astype(str)
+
+        mask = (labels == str(bona_fide_label)) & (splits == str(split_value))
+
+        self.idxs = self.base.meta.index[mask].to_list()
+
+        if len(self.idxs) == 0:
+            raise ValueError(
+                "BonaFideOnly: No samples matched "
+                f"Label={bona_fide_label} and {split_col}={split_value}. "
+                "Check your protocol values."
+            )
+
+    def __len__(self):
+        return len(self.idxs)
+
+    def __getitem__(self, i):
+        x, label, path, attack = self.base[self.idxs[i]]
+        return x  # only waveform needed
+    
+
+class TwoViewWrapper(torch.utils.data.Dataset):
+    def __init__(self, base_wave_dataset, augment_fn):
+        self.base = base_wave_dataset
+        self.aug = augment_fn
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        x = self.base[idx]              # Tensor [T]
+        x1 = self.aug(x)
+        x2 = self.aug(x)
+        return x1, x2
+    
+
+def augment_wave(x, sr=16000):
+    # x: Tensor [T]
+    x = x.clone()
+
+    # random gain
+    if random.random() < 0.8:
+        gain_db = random.uniform(-6, 6)
+        x = x * (10 ** (gain_db / 20))
+
+    # additive noise
+    if random.random() < 0.8:
+        snr_db = random.uniform(5, 30)
+        noise = torch.randn_like(x)
+        x_power = x.pow(2).mean().clamp_min(1e-8)
+        n_power = noise.pow(2).mean().clamp_min(1e-8)
+        scale = torch.sqrt(x_power / (10 ** (snr_db / 10) * n_power))
+        x = x + scale * noise
+
+    # random band-pass-ish via biquad (optional)
+    if random.random() < 0.5:
+        # pick lowpass or highpass randomly
+        if random.random() < 0.5:
+            cutoff = random.uniform(2000, 7000)
+            x = AF.lowpass_biquad(x, sr, cutoff)
+        else:
+            cutoff = random.uniform(50, 300)
+            x = AF.highpass_biquad(x, sr, cutoff)
+
+    # clamp
+    x = torch.clamp(x, -1.0, 1.0)
+    return x
+
+# =========================
+# Augmentations (bona fide only)
+# =========================
+def augment_wave(
+    x: torch.Tensor,
+    sr: int = 16000,
+    gain_db_min: float = -6.0,
+    gain_db_max: float = 6.0,
+    snr_db_min: float = 5.0,
+    snr_db_max: float = 30.0,
+    time_mask_prob: float = 0.3,
+    time_mask_min_frac: float = 0.02,
+    time_mask_max_frac: float = 0.10,
+) -> torch.Tensor:
+    """
+    x: Tensor [T]
+    Torch-only augmentations (safe in DataLoader workers).
+    """
+    x = x.clone().float()
+
+    # random gain
+    if random.random() < 0.8:
+        gain_db = random.uniform(gain_db_min, gain_db_max)
+        x = x * (10 ** (gain_db / 20.0))
+
+    # additive noise at random SNR
+    if random.random() < 0.8:
+        snr_db = random.uniform(snr_db_min, snr_db_max)
+        noise = torch.randn_like(x)
+        x_power = x.pow(2).mean().clamp_min(1e-8)
+        n_power = noise.pow(2).mean().clamp_min(1e-8)
+        scale = torch.sqrt(x_power / (10 ** (snr_db / 10.0) * n_power))
+        x = x + scale * noise
+
+    # random band-pass-ish via biquad (optional)
+    if random.random() < 0.5:
+        # pick lowpass or highpass randomly
+        if random.random() < 0.5:
+            cutoff = random.uniform(2000, 7000)
+            x = AF.lowpass_biquad(x, sr, cutoff)
+        else:
+            cutoff = random.uniform(50, 300)
+            x = AF.highpass_biquad(x, sr, cutoff)
+
+    # time masking
+    if random.random() < time_mask_prob:
+        T = x.shape[0]
+        width = int(random.uniform(time_mask_min_frac, time_mask_max_frac) * T)
+        if width > 0:
+            start = random.randint(0, max(0, T - width))
+            x[start:start + width] = 0.0
+
+    # clamp
+    x = torch.clamp(x, -1.0, 1.0)
+    return x
