@@ -39,7 +39,7 @@ from e2e_utils import AudioSVMClassifier
 
 SUPPORTED_EXTRACTORS = ("xlsr300m", "speechbrain")
 SUPPORTED_MODELS = ("ocsvm", "deepsvdd")
-PHASE1_DEFAULT_SPLITS = ("ff_train", "ff_val", "itw_test", "dfeval_test")
+PHASE1_DEFAULT_SPLITS = ("ff_train", "ff_val", "itw_test", "dfeval_test", "oc_test")
 RUNS_ROOT = Path("runs")
 PHASE1_STUB_COMMANDS = ("deepsvdd", "evaluate", "fusion")
 
@@ -74,6 +74,11 @@ DEFAULT_SPLIT_SPECS: Dict[str, SplitSpec] = {
     "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation"]),
     "itw_test": SplitSpec(dataset_tags=["itw"]),
     "dfeval_test": SplitSpec(dataset_tags=["DFEval2024"]),
+    # OC eval: 1 000-sample evaluation set built from oc_protocol_eval1000.csv.
+    # Paths in that CSV are ignored; the loader reconstructs them from the Great Lakes
+    # dataset root using the <system_subdir>/<filename> components (see
+    # FeatureConfig.path_reconstruction_modes and dataset_loader._join_audio_path).
+    "oc_test": SplitSpec(dataset_tags=["oc"]),
 }
 
 POSITIVE_LABEL_VALUES = {
@@ -96,6 +101,7 @@ SPLIT_TO_DATASET: Dict[str, str] = {
     "ff_val": "ff",
     "itw_test": "itw",
     "dfeval_test": "dfeval",
+    "oc_test": "oc",
 }
 
 
@@ -242,7 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
     ocsvm_parser.add_argument(
         "--eval-splits",
         nargs="+",
-        default=["ff_val", "itw_test", "dfeval_test"],
+        default=["ff_val", "itw_test", "dfeval_test", "oc_test"],
         help="Splits evaluated after selecting the best config.",
     )
     ocsvm_parser.add_argument(
