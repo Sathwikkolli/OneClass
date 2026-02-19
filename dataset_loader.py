@@ -49,6 +49,10 @@ class AudioDataset(torch.utils.data.Dataset):
             # at the start of the file, turning "Audio" into "\ufeffAudio".
             df.columns = [c.lstrip('\ufeff').strip() for c in df.columns]
 
+            # Normalize header whitespace/BOM so canonical column detection is stable
+            # across CSVs exported from different tools/environments.
+            df.columns = [str(c).strip().lstrip("﻿") for c in df.columns]
+
             # Normalize common lowercase/aliased column names to canonical names.
             # Handles protocols like the itw meta.csv that use "file"/"speaker"/"label"
             # instead of the canonical "Audio"/"Speaker"/"Label".

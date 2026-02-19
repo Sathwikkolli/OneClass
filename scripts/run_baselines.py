@@ -531,7 +531,15 @@ def extract_split_cache(
     overwrite: bool,
 ) -> Dict[str, Any]:
     if subset.empty:
-        raise RuntimeError(f"No rows matched the '{split_name}' split specification.")
+        return {
+            "split": split_name,
+            "cache_path": str(cache_path.resolve()),
+            "num_examples": 0,
+            "embedding_dim": None,
+            "label_counts": {},
+            "status": "skipped_empty",
+            "reason": "No rows matched split specification after protocol filtering.",
+        }
 
     if cache_path.exists() and not overwrite:
         logging.info("Cache %s already exists; skipping (use --overwrite to rebuild).", cache_path)
