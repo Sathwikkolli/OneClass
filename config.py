@@ -23,14 +23,14 @@ class FeatureConfig:
         # '<root>/Donald_Trump/-/' automatically (see path_reconstruction_modes).
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
         "/nfs/turbo/umd-hafiz/issf_server_data/ds_wild/release_in_the_wild/",
-        "/data/Data/Deepfake_Eval_2024/audio-data",
+        "/nfs/turbo/umd-hafiz/issf_server_data/Deepfake_Eval_2024",
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
     ])
     protocol_path: list = field(default_factory=lambda: [
         # FF protocol lives at the famousfigures root on Great Lakes.
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/protocol_Donald_Trump_v1.csv",
         "/nfs/turbo/umd-hafiz/issf_server_data/ds_wild/protocols/meta.csv",
-        "/data/Data/Deepfake_Eval_2024/protocols/final_Deepfakeeval2024_Speakerverification.csv",
+        "/nfs/turbo/umd-hafiz/issf_server_data/Deepfake_Eval_2024/final_Deepfakeeval2024_Speakerverification.csv",
         # OC eval protocol: evaluation set for the Donald Trump speaker.
         "oc_protocol_eval1000.csv",
     ])
@@ -39,7 +39,7 @@ class FeatureConfig:
     # audio_dir only for relative ones.  "reconstruct" ignores the root stored in the
     # CSV and rebuilds the path as <audio_dir>/<system_subdir>/<filename>, mapping
     # 'Original' → '-' for Great Lakes layout.
-    path_reconstruction_modes: list = field(default_factory=lambda: ["reconstruct", "auto", "auto", "reconstruct"])
+    path_reconstruction_modes: list = field(default_factory=lambda: ["reconstruct", "auto", "reconstruct", "reconstruct"])
     sep = ','  # or '\t' for tsv files
     required_cols: List[str] = field(default_factory=lambda: ["Audio", "Label", "Speaker", "Source", "split"])
     
