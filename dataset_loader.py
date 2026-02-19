@@ -35,7 +35,58 @@ class AudioDataset(torch.utils.data.Dataset):
 
         dfs = []
         for idx, p in enumerate(protocol_paths):
+            if not Path(p).exists():
+                import warnings
+                warnings.warn(
+                    f"Protocol file not found, skipping: {p}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
             df = pd.read_csv(p, sep=sep)
+
+            # Normalize common lowercase/aliased column names to canonical names.
+            # Handles protocols like the itw meta.csv that use "file"/"speaker"/"label"
+            # instead of the canonical "Audio"/"Speaker"/"Label".
+            _COL_ALIASES = {"file": "Audio", "filename": "Audio", "label": "Label", "speaker": "Speaker"}
+            df = df.rename(columns={k: v for k, v in _COL_ALIASES.items() if k in df.columns and v not in df.columns})
+
+            path_mode = path_modes[idx] if idx < len(path_modes) else "auto"
+
+            # ----------------------------------------------------------------
+            # Reconstruct-mode column normalization.
+            # The OC eval CSV uses "audiofilepath" instead of "Audio", has no
+            # "Label" column (real vs. fake is encoded in the path's parent
+            # directory), and no "Source" column.  Normalize all three before
+            # the required_cols check so the rest of the pipeline is unchanged.
+            # ----------------------------------------------------------------
+            if path_mode == "reconstruct":
+                # 1. Rename path column if needed
+                if "Audio" not in df.columns and "audiofilepath" in df.columns:
+                    df = df.rename(columns={"audiofilepath": "Audio"})
+
+                # 2. Infer Label: parent dir "Original" (and aliases) → bonafide,
+                #    anything else (COZYVOICE2, E2TTS, …) → spoof.
+                if "Label" not in df.columns:
+                    _REAL_ALIASES = frozenset({"original", "real", "bonafide", "genuine"})
+                    df["Label"] = df["Audio"].apply(
+                        lambda a: "bonafide"
+                        if Path(str(a)).parent.name.lower() in _REAL_ALIASES
+                        else "spoof"
+                    )
+
+                # 3. Infer Source from the system subdirectory name, prefixed with
+                #    the protocol tag so that infer_dataset_tag() in run_baselines.py
+                #    can map every row back to the correct dataset tag (e.g. "oc").
+                if "Source" not in df.columns:
+                    _REAL_ALIASES = frozenset({"original", "real", "bonafide", "genuine"})
+                    _tag = config.protocol_tags[idx]
+                    df["Source"] = df["Audio"].apply(
+                        lambda a, _t=_tag: f"{_t}_bonafide"
+                        if Path(str(a)).parent.name.lower() in _REAL_ALIASES
+                        else f"{_t}_{Path(str(a)).parent.name}"
+                    )
+
             for col in required_cols:
                 if col not in df.columns:
                     if col == "Source":
@@ -48,19 +99,22 @@ class AudioDataset(torch.utils.data.Dataset):
             # Use the corresponding audio_dir for each protocol file when audio_dir is a list.
             audio_dir_for_df = audio_dir[idx] if isinstance(audio_dir, (list, tuple)) else audio_dir
 
-            path_mode = path_modes[idx] if idx < len(path_modes) else "auto"
+            # Directory names in old CSV paths that correspond to real (bonafide) audio.
+            # On Great Lakes these live under the "-" subdirectory.
+            _REAL_DIR_ALIASES = frozenset({"original", "real", "bonafide", "genuine"})
+            _REALS_DIR = "-"
 
             def _join_audio_path(a, _mode=path_mode, _root=audio_dir_for_df):
                 a_str = str(a)
                 if _mode == "reconstruct":
-                    # Extract <system_subdir>/<filename> from whatever path is stored
-                    # in the CSV and graft it onto the local dataset root.
+                    # Take only <system_subdir>/<filename> from the stored path and
+                    # graft onto the local dataset root.  Map "Original" (and aliases)
+                    # to the "-" directory used on Great Lakes for real audio.
                     parts = Path(a_str).parts
-                    if len(parts) >= 2:
-                        rel_path = os.path.join(parts[-2], parts[-1])
-                    else:
-                        rel_path = parts[-1]
-                    return os.path.join(_root, rel_path)
+                    filename = parts[-1]
+                    parent = parts[-2] if len(parts) >= 2 else ""
+                    subdir = _REALS_DIR if parent.lower() in _REAL_DIR_ALIASES else parent
+                    return os.path.join(_root, subdir, filename)
                 # Default "auto" mode: keep absolute paths as-is, prepend root otherwise.
                 if os.path.isabs(a_str):
                     return a_str
@@ -68,6 +122,11 @@ class AudioDataset(torch.utils.data.Dataset):
 
             df['Audio'] = df['Audio'].astype(str).apply(_join_audio_path)
             dfs.append(df)
+        if not dfs:
+            raise RuntimeError(
+                "No protocol files could be loaded. Check that at least one CSV path "
+                "in FeatureConfig.protocol_path exists."
+            )
         meta = pd.concat(dfs, ignore_index=True)
         
         # Normalize speaker names: replace spaces and underscores, lowercase

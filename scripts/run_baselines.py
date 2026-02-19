@@ -71,14 +71,14 @@ class SplitSpec:
 
 DEFAULT_SPLIT_SPECS: Dict[str, SplitSpec] = {
     "ff_train": SplitSpec(dataset_tags=["ff"], split_values=["train"]),
-    "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation"]),
+    "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation", "eval"]),
     "itw_test": SplitSpec(dataset_tags=["itw"]),
     "dfeval_test": SplitSpec(dataset_tags=["DFEval2024"]),
-    # OC eval: 1 000-sample evaluation set built from oc_protocol_eval1000.csv.
-    # Paths in that CSV are ignored; the loader reconstructs them from the Great Lakes
-    # dataset root using the <system_subdir>/<filename> components (see
-    # FeatureConfig.path_reconstruction_modes and dataset_loader._join_audio_path).
-    "oc_test": SplitSpec(dataset_tags=["oc"]),
+    # OC splits: oc_protocol_eval1000.csv contains a 'split' column with values
+    # 'train' (bonafide-only training rows) and 'eval' (bonafide + spoof test rows).
+    # Paths are reconstructed from the Great Lakes dataset root (Original → '-').
+    "oc_train": SplitSpec(dataset_tags=["oc"], split_values=["train"]),
+    "oc_test": SplitSpec(dataset_tags=["oc"], split_values=["eval"]),
 }
 
 POSITIVE_LABEL_VALUES = {
@@ -86,6 +86,7 @@ POSITIVE_LABEL_VALUES = {
     "bonafide",
     "bona_fide",
     "bona fide",
+    "bona-fide",
     "genuine",
     "human",
     "real",
@@ -101,6 +102,7 @@ SPLIT_TO_DATASET: Dict[str, str] = {
     "ff_val": "ff",
     "itw_test": "itw",
     "dfeval_test": "dfeval",
+    "oc_train": "oc",
     "oc_test": "oc",
 }
 

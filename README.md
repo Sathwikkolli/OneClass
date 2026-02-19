@@ -71,6 +71,29 @@ waveform, sample_rate = torchaudio.load(audio_path)
 ```
 
 
+## Experimental Results
+
+Results use a **proper train/eval split**: training is performed exclusively on bonafide speech (`oc_train`, split=train), and evaluation is on a held-out set (`oc_test`, split=eval) containing both real and spoofed audio. This prevents data leakage between training and evaluation.
+
+### Donald Trump — OC-SVM (xlsr300m / xls_r_300m)
+
+| Split | Real samples | Spoof samples | Total |
+|-------|-------------|---------------|-------|
+| oc_train (train) | 3327 | 0 | 3327 |
+| oc_test (eval) | 190 | 810 | 1000 |
+
+**Hyperparameter sweep:** nu ∈ {0.05, 0.1, 0.2} × gamma ∈ {0.05, 0.1, 0.2} (9 trials)
+
+**Best config:** nu=0.05, gamma=0.05
+
+| Metric | Value |
+|--------|-------|
+| EER | 10.56% |
+| FAR | 1.11% |
+| FRR | 20.00% |
+| Accuracy | 95.30% |
+
+
 
 
 
