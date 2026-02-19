@@ -132,8 +132,16 @@ class AudioDataset(torch.utils.data.Dataset):
                     parent = parts[-2] if len(parts) >= 2 else ""
                     subdir = _REALS_DIR if parent.lower() in _REAL_DIR_ALIASES else parent
                     return os.path.join(_root, subdir, filename)
-                # Default "auto" mode: keep absolute paths as-is, prepend root otherwise.
+                # Default "auto" mode: keep absolute paths as-is when they exist.
+                # If an absolute path points to a stale mount prefix (common across
+                # cluster migrations), fall back to <audio_root>/<basename> when that
+                # candidate exists locally.
                 if os.path.isabs(a_str):
+                    if os.path.exists(a_str):
+                        return a_str
+                    fallback = os.path.join(_root, os.path.basename(a_str))
+                    if os.path.exists(fallback):
+                        return fallback
                     return a_str
                 return os.path.join(_root, a_str)
 
