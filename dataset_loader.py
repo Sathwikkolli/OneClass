@@ -61,9 +61,22 @@ class AudioDataset(torch.utils.data.Dataset):
             # the required_cols check so the rest of the pipeline is unchanged.
             # ----------------------------------------------------------------
             if path_mode == "reconstruct":
-                # 1. Rename path column if needed
-                if "Audio" not in df.columns and "audiofilepath" in df.columns:
-                    df = df.rename(columns={"audiofilepath": "Audio"})
+                # 1. Normalize path column names to canonical "Audio".
+                if "Audio" not in df.columns:
+                    for candidate in ("audiofilepath", "audio_file", "path", "filepath", "file", "filename"):
+                        if candidate in df.columns:
+                            df = df.rename(columns={candidate: "Audio"})
+                            break
+
+                # If there is still no path column, this protocol cannot be reconstructed.
+                if "Audio" not in df.columns:
+                    import warnings
+                    warnings.warn(
+                        f"Protocol at '{p}' is missing an Audio path column required for reconstruct mode; skipping.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    continue
 
                 # 2. Infer Label: parent dir "Original" (and aliases) → bonafide,
                 #    anything else (COZYVOICE2, E2TTS, …) → spoof.
