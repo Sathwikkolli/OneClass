@@ -35,6 +35,14 @@ class AudioDataset(torch.utils.data.Dataset):
 
         dfs = []
         for idx, p in enumerate(protocol_paths):
+            if not Path(p).exists():
+                import warnings
+                warnings.warn(
+                    f"Protocol file not found, skipping: {p}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
             df = pd.read_csv(p, sep=sep)
             for col in required_cols:
                 if col not in df.columns:
@@ -68,6 +76,11 @@ class AudioDataset(torch.utils.data.Dataset):
 
             df['Audio'] = df['Audio'].astype(str).apply(_join_audio_path)
             dfs.append(df)
+        if not dfs:
+            raise RuntimeError(
+                "No protocol files could be loaded. Check that at least one CSV path "
+                "in FeatureConfig.protocol_path exists."
+            )
         meta = pd.concat(dfs, ignore_index=True)
         
         # Normalize speaker names: replace spaces and underscores, lowercase
