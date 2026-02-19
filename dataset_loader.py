@@ -45,6 +45,12 @@ class AudioDataset(torch.utils.data.Dataset):
                 continue
             df = pd.read_csv(p, sep=sep)
 
+            # Normalize common lowercase/aliased column names to canonical names.
+            # Handles protocols like the itw meta.csv that use "file"/"speaker"/"label"
+            # instead of the canonical "Audio"/"Speaker"/"Label".
+            _COL_ALIASES = {"file": "Audio", "filename": "Audio", "label": "Label", "speaker": "Speaker"}
+            df = df.rename(columns={k: v for k, v in _COL_ALIASES.items() if k in df.columns and v not in df.columns})
+
             path_mode = path_modes[idx] if idx < len(path_modes) else "auto"
 
             # ----------------------------------------------------------------

@@ -86,6 +86,7 @@ POSITIVE_LABEL_VALUES = {
     "bonafide",
     "bona_fide",
     "bona fide",
+    "bona-fide",
     "genuine",
     "human",
     "real",

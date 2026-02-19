@@ -22,14 +22,14 @@ class FeatureConfig:
         # Path reconstruction maps the old '/data/FF_V2/…/Original/' prefix to
         # '<root>/Donald_Trump/-/' automatically (see path_reconstruction_modes).
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
-        "/data/Data/ds_wild/release_in_the_wild/",
+        "/nfs/turbo/umd-hafiz/issf_server_data/ds_wild/release_in_the_wild/",
         "/data/Data/Deepfake_Eval_2024/audio-data",
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
     ])
     protocol_path: list = field(default_factory=lambda: [
         # FF protocol lives at the famousfigures root on Great Lakes.
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/protocol_Donald_Trump_v1.csv",
-        "/data/Data/ds_wild/protocols/meta.csv",
+        "/nfs/turbo/umd-hafiz/issf_server_data/ds_wild/protocols/meta.csv",
         "/data/Data/Deepfake_Eval_2024/protocols/final_Deepfakeeval2024_Speakerverification.csv",
         # OC eval protocol: evaluation set for the Donald Trump speaker.
         "oc_protocol_eval1000.csv",
