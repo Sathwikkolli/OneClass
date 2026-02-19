@@ -14,8 +14,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pickle
+
 import numpy as np
 import pandas as pd
+from sklearn import svm
+from sklearn.metrics import roc_curve
+from sklearn.preprocessing import StandardScaler
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -83,6 +88,59 @@ POSITIVE_LABEL_VALUES = {
 }
 NEGATIVE_LABEL_VALUES = {"0", "spoof", "fake", "attack", "false"}
 RUNS_LOG_PATH = REPO_ROOT / "runs.jsonl"
+
+# Mapping from split names used in cache filenames to dataset tags used in the
+# locked metrics JSON schema (AGENTS.md §11).
+SPLIT_TO_DATASET: Dict[str, str] = {
+    "ff_train": "ff",
+    "ff_val": "ff",
+    "itw_test": "itw",
+    "dfeval_test": "dfeval",
+}
+
+
+def compute_eer(labels: np.ndarray, scores: np.ndarray):
+    """Return (eer, eer_threshold) per Appendix A of AGENTS.md.
+
+    Labels: 1 = bona fide (positive class), 0 = spoof.
+    Scores: higher value indicates more likely bona fide
+            (e.g. OC-SVM ``decision_function`` output).
+    """
+    fpr, tpr, thresholds = roc_curve(labels, scores, pos_label=1)
+    fnr = 1.0 - tpr
+    idx = int(np.nanargmin(np.abs(fpr - fnr)))
+    eer = float((fpr[idx] + fnr[idx]) / 2.0)
+    eer_threshold = float(thresholds[idx])
+    return eer, eer_threshold
+
+
+def load_npz_cache(cache_path: Path) -> Dict[str, Any]:
+    """Load a split .npz cache file and return its contents as a dict.
+
+    Keys returned:
+        embeddings : float32 ndarray [N, D]
+        labels     : int64 ndarray [N]  (1 = bona fide, 0 = spoof)
+        paths      : list of str
+        metadata   : dict (parsed from stored JSON string)
+    """
+    with np.load(cache_path, allow_pickle=True) as npz:
+        embeddings = npz["embeddings"].astype(np.float32)
+        labels = npz["labels"].astype(np.int64)
+        paths = npz["paths"].tolist() if "paths" in npz.files else []
+        metadata: Dict[str, Any] = {}
+        if "metadata" in npz.files:
+            raw_meta = npz["metadata"]
+            try:
+                metadata_str = raw_meta.item() if hasattr(raw_meta, "item") else str(raw_meta)
+                metadata = json.loads(metadata_str)
+            except Exception:  # pragma: no cover - best effort
+                metadata = {}
+    return {
+        "embeddings": embeddings,
+        "labels": labels,
+        "paths": paths,
+        "metadata": metadata,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -582,33 +640,298 @@ def handle_extract(args: argparse.Namespace, state: RuntimeState) -> int:
 
 
 def handle_ocsvm(args: argparse.Namespace, state: RuntimeState) -> int:
+    """Run OC-SVM hyperparam sweep, select best config, retrain, and evaluate.
+
+    Phase-1 scope per AGENTS.md §§5.1, 6, 11:
+      1. Load bona fide training embeddings from the cache produced by ``extract``.
+      2. Sweep nu × gamma, recording validation EER for every trial in
+         ``runs/<run_id>/hyperparam_trials.jsonl``.
+      3. Retrain on the full bona fide training set with the best (nu, gamma).
+      4. Persist scaler and SVM as ``.pkl`` files under the output run directory.
+      5. Evaluate on each eval split, writing per-dataset metrics JSONs.
+      6. Append a summary line to the repo-level ``runs.jsonl``.
+    """
     ensure_directory(state.runs_dir)
     ensure_directory(state.output_run_dir)
 
-    sweep_plan = {
-        "command": "ocsvm",
+    cache_root = state.cache_dir / state.extractor / state.feature_config.speaker_name
+
+    # ------------------------------------------------------------------
+    # 1. Load training embeddings (bona fide only)
+    # ------------------------------------------------------------------
+    train_cache = cache_root / f"{args.train_split}.npz"
+    if not train_cache.exists():
+        logging.error(
+            "Training cache not found: %s. Run 'extract' first.", train_cache
+        )
+        return 1
+
+    logging.info("Loading training embeddings from %s", train_cache)
+    train_data = load_npz_cache(train_cache)
+    X_train_all = train_data["embeddings"]
+    y_train_all = train_data["labels"]
+
+    bona_fide_mask = y_train_all == 1
+    X_train_bf = X_train_all[bona_fide_mask]
+    logging.info(
+        "Training set: %d bona fide samples (of %d total)",
+        X_train_bf.shape[0],
+        X_train_all.shape[0],
+    )
+    if X_train_bf.shape[0] == 0:
+        logging.error("No bona fide samples found in training split '%s'.", args.train_split)
+        return 1
+
+    # ------------------------------------------------------------------
+    # 2. Load validation embeddings (combined across val_splits)
+    # ------------------------------------------------------------------
+    val_embeddings_list: List[np.ndarray] = []
+    val_labels_list: List[np.ndarray] = []
+    for split_name in args.val_splits:
+        val_cache = cache_root / f"{split_name}.npz"
+        if not val_cache.exists():
+            logging.warning(
+                "Validation cache not found: %s. Skipping split '%s'.",
+                val_cache,
+                split_name,
+            )
+            continue
+        vd = load_npz_cache(val_cache)
+        val_embeddings_list.append(vd["embeddings"])
+        val_labels_list.append(vd["labels"])
+        logging.info(
+            "Loaded val split '%s': %d samples (real=%d, spoof=%d)",
+            split_name,
+            len(vd["labels"]),
+            int((vd["labels"] == 1).sum()),
+            int((vd["labels"] == 0).sum()),
+        )
+
+    if not val_embeddings_list:
+        logging.error("No validation caches found. Run 'extract' first.")
+        return 1
+
+    X_val = np.concatenate(val_embeddings_list, axis=0)
+    y_val = np.concatenate(val_labels_list, axis=0)
+    logging.info(
+        "Combined validation set: %d samples (real=%d, spoof=%d)",
+        len(y_val),
+        int((y_val == 1).sum()),
+        int((y_val == 0).sum()),
+    )
+
+    if len(np.unique(y_val)) < 2:
+        logging.error(
+            "Validation set has only one label class; cannot compute EER. "
+            "Ensure the val splits contain both bona fide and spoof samples."
+        )
+        return 1
+
+    # ------------------------------------------------------------------
+    # 3. Hyperparameter sweep
+    # ------------------------------------------------------------------
+    np.random.seed(state.seed)
+    trials_path = state.runs_dir / "hyperparam_trials.jsonl"
+    best_eer = float("inf")
+    best_nu: float = args.nu_grid[0]
+    best_gamma: float = args.gamma_grid[0]
+
+    logging.info(
+        "Starting OC-SVM sweep: nu=%s × gamma=%s (%d trials total)",
+        args.nu_grid,
+        args.gamma_grid,
+        len(args.nu_grid) * len(args.gamma_grid),
+    )
+
+    for nu in args.nu_grid:
+        for gamma in args.gamma_grid:
+            trial_start = time.perf_counter()
+            logging.info("  Trial: nu=%.3f, gamma=%.3f", nu, gamma)
+
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train_bf)
+            X_val_scaled = scaler.transform(X_val)
+
+            clf = svm.OneClassSVM(nu=nu, gamma=gamma, kernel="rbf")
+            clf.fit(X_train_scaled)
+
+            val_scores = clf.decision_function(X_val_scaled)
+            try:
+                trial_eer, trial_eer_thresh = compute_eer(y_val, val_scores)
+            except Exception as exc:
+                logging.warning(
+                    "EER computation failed for nu=%.3f, gamma=%.3f: %s", nu, gamma, exc
+                )
+                continue
+
+            trial_duration = time.perf_counter() - trial_start
+            trial_entry: Dict[str, Any] = {
+                "run_id": state.run_id,
+                "nu": nu,
+                "gamma": gamma,
+                "val_eer": round(float(trial_eer), 6),
+                "eer_threshold": round(float(trial_eer_thresh), 6),
+                "val_splits": args.val_splits,
+                "num_val_real": int((y_val == 1).sum()),
+                "num_val_spoof": int((y_val == 0).sum()),
+                "duration_sec": round(trial_duration, 2),
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            }
+            with trials_path.open("a", encoding="utf-8") as fp:
+                fp.write(json.dumps(trial_entry) + "\n")
+
+            logging.info(
+                "    EER=%.4f  threshold=%.4f  (%.2fs)",
+                trial_eer,
+                trial_eer_thresh,
+                trial_duration,
+            )
+            if trial_eer < best_eer:
+                best_eer = trial_eer
+                best_nu = nu
+                best_gamma = gamma
+
+    logging.info(
+        "Best config: nu=%.3f, gamma=%.3f -> val EER=%.4f", best_nu, best_gamma, best_eer
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Retrain on full bona fide training set with best config
+    # ------------------------------------------------------------------
+    logging.info("Retraining on full bona fide training set with best config...")
+    final_scaler = StandardScaler()
+    X_train_final_scaled = final_scaler.fit_transform(X_train_bf)
+    final_clf = svm.OneClassSVM(nu=best_nu, gamma=best_gamma, kernel="rbf")
+    final_clf.fit(X_train_final_scaled)
+
+    # ------------------------------------------------------------------
+    # 5. Persist model artifacts
+    # ------------------------------------------------------------------
+    model_stem = state.feature_config.ssl_model  # e.g. "xls_r_300m"
+    speaker_dir = state.output_run_dir / state.feature_config.speaker_name
+    scaling_dir = speaker_dir / "scaling_models"
+    svm_models_dir = speaker_dir / "svm_models"
+    ensure_directory(scaling_dir)
+    ensure_directory(svm_models_dir)
+
+    scaler_path = scaling_dir / f"{model_stem}.pkl"
+    svm_path = svm_models_dir / f"{model_stem}.pkl"
+    with scaler_path.open("wb") as fh:
+        pickle.dump(final_scaler, fh)
+    with svm_path.open("wb") as fh:
+        pickle.dump(final_clf, fh)
+    logging.info("Saved scaler -> %s", scaler_path)
+    logging.info("Saved SVM   -> %s", svm_path)
+
+    # ------------------------------------------------------------------
+    # 6. Evaluate on each eval split and emit per-dataset metrics JSONs
+    # ------------------------------------------------------------------
+    results_dir = state.output_run_dir / "results"
+    ensure_directory(results_dir)
+
+    eval_results: List[Dict[str, Any]] = []
+    for split_name in args.eval_splits:
+        eval_cache = cache_root / f"{split_name}.npz"
+        if not eval_cache.exists():
+            logging.warning(
+                "Eval cache not found for '%s': %s. Skipping.", split_name, eval_cache
+            )
+            continue
+
+        ed = load_npz_cache(eval_cache)
+        X_eval = ed["embeddings"]
+        y_eval = ed["labels"]
+
+        if len(np.unique(y_eval)) < 2:
+            logging.warning(
+                "Split '%s' has only one label class; EER will be approximate.", split_name
+            )
+
+        X_eval_scaled = final_scaler.transform(X_eval)
+        scores = final_clf.decision_function(X_eval_scaled)
+
+        try:
+            eer, eer_threshold = compute_eer(y_eval, scores)
+        except Exception as exc:
+            logging.error("EER computation failed for split '%s': %s", split_name, exc)
+            continue
+
+        predictions = (scores >= eer_threshold).astype(np.int64)
+        num_real = int((y_eval == 1).sum())
+        num_fake = int((y_eval == 0).sum())
+
+        # FAR: fraction of spoof samples incorrectly accepted as bona fide
+        far = float(((predictions == 1) & (y_eval == 0)).sum()) / max(num_fake, 1)
+        # FRR: fraction of bona fide samples incorrectly rejected as spoof
+        frr = float(((predictions == 0) & (y_eval == 1)).sum()) / max(num_real, 1)
+        accuracy = float((predictions == y_eval).mean())
+
+        dataset_tag = SPLIT_TO_DATASET.get(split_name, split_name)
+        metric_entry: Dict[str, Any] = {
+            "run_id": state.run_id,
+            "extractor": state.extractor,
+            "model_type": "ocsvm",
+            "dataset": dataset_tag,
+            "phase": "baseline",
+            "threshold": round(float(eer_threshold), 6),
+            "num_real": num_real,
+            "num_fake": num_fake,
+            "accuracy": round(accuracy, 6),
+            "FAR": round(far, 6),
+            "FRR": round(frr, 6),
+            "EER": round(float(eer), 6),
+            "eer_threshold": round(float(eer_threshold), 6),
+            "nu": best_nu,
+            "gamma": best_gamma,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        json_path = results_dir / f"{dataset_tag}.json"
+        json_path.write_text(json.dumps(metric_entry, indent=2))
+        logging.info(
+            "  %s -> EER=%.4f  FAR=%.4f  FRR=%.4f  accuracy=%.4f",
+            split_name,
+            eer,
+            far,
+            frr,
+            accuracy,
+        )
+        eval_results.append(metric_entry)
+
+    # ------------------------------------------------------------------
+    # 7. Append summary to repo-level runs.jsonl
+    # ------------------------------------------------------------------
+    runs_entry: Dict[str, Any] = {
         "run_id": state.run_id,
+        "command": "ocsvm",
         "extractor": state.extractor,
-        "model": state.model,
-        "train_split": args.train_split,
+        "model_type": "ocsvm",
+        "best_nu": best_nu,
+        "best_gamma": best_gamma,
+        "best_val_eer": round(float(best_eer), 6),
         "val_splits": args.val_splits,
         "eval_splits": args.eval_splits,
-        "nu_grid": args.nu_grid,
-        "gamma_grid": args.gamma_grid,
-        "max_workers": args.max_workers,
-        "cache_dir": str(state.cache_dir),
-        "output_root": str(state.output_run_dir),
-        "notes": (
-            "Phase-1 placeholder. Implement OC-SVM training, hyperparam logging, and "
-            "metrics emission per AGENTS.md."
-        ),
+        "scaler_path": str(scaler_path.resolve()),
+        "svm_path": str(svm_path.resolve()),
+        "eval_results": eval_results,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }
-    plan_path = state.runs_dir / "ocsvm_plan.json"
-    persist_plan(plan_path, sweep_plan)
-    logging.info("Recorded OC-SVM sweep placeholder at %s.", plan_path)
-    logging.info(
-        "TODO: load cached embeddings, run sweeps over nu/gamma, and emit metrics + runs.jsonl entries."
-    )
+    append_runs_log(runs_entry)
+    logging.info("Appended run summary to %s", RUNS_LOG_PATH)
+
+    # ------------------------------------------------------------------
+    # 8. Write validation curve summary
+    # ------------------------------------------------------------------
+    val_curve: Dict[str, Any] = {
+        "run_id": state.run_id,
+        "best_nu": best_nu,
+        "best_gamma": best_gamma,
+        "best_val_eer": round(float(best_eer), 6),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    val_curve_path = state.runs_dir / "validation_curve.json"
+    val_curve_path.write_text(json.dumps(val_curve, indent=2))
+    logging.info("Wrote validation curve summary -> %s", val_curve_path)
+
     return 0
 
 
