@@ -45,6 +45,10 @@ class AudioDataset(torch.utils.data.Dataset):
                 continue
             df = pd.read_csv(p, sep=sep)
 
+            # Normalize header whitespace/BOM so canonical column detection is stable
+            # across CSVs exported from different tools/environments.
+            df.columns = [str(c).strip().lstrip("﻿") for c in df.columns]
+
             # Normalize common lowercase/aliased column names to canonical names.
             # Handles protocols like the itw meta.csv that use "file"/"speaker"/"label"
             # instead of the canonical "Audio"/"Speaker"/"Label".
@@ -61,9 +65,22 @@ class AudioDataset(torch.utils.data.Dataset):
             # the required_cols check so the rest of the pipeline is unchanged.
             # ----------------------------------------------------------------
             if path_mode == "reconstruct":
-                # 1. Rename path column if needed
-                if "Audio" not in df.columns and "audiofilepath" in df.columns:
-                    df = df.rename(columns={"audiofilepath": "Audio"})
+                # 1. Normalize path column names to canonical "Audio".
+                if "Audio" not in df.columns:
+                    for candidate in ("audiofilepath", "audio_file", "path", "filepath", "file", "filename"):
+                        if candidate in df.columns:
+                            df = df.rename(columns={candidate: "Audio"})
+                            break
+
+                # If there is still no path column, this protocol cannot be reconstructed.
+                if "Audio" not in df.columns:
+                    import warnings
+                    warnings.warn(
+                        f"Protocol at '{p}' is missing an Audio path column required for reconstruct mode; skipping.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    continue
 
                 # 2. Infer Label: parent dir "Original" (and aliases) → bonafide,
                 #    anything else (COZYVOICE2, E2TTS, …) → spoof.
@@ -115,8 +132,16 @@ class AudioDataset(torch.utils.data.Dataset):
                     parent = parts[-2] if len(parts) >= 2 else ""
                     subdir = _REALS_DIR if parent.lower() in _REAL_DIR_ALIASES else parent
                     return os.path.join(_root, subdir, filename)
-                # Default "auto" mode: keep absolute paths as-is, prepend root otherwise.
+                # Default "auto" mode: keep absolute paths as-is when they exist.
+                # If an absolute path points to a stale mount prefix (common across
+                # cluster migrations), fall back to <audio_root>/<basename> when that
+                # candidate exists locally.
                 if os.path.isabs(a_str):
+                    if os.path.exists(a_str):
+                        return a_str
+                    fallback = os.path.join(_root, os.path.basename(a_str))
+                    if os.path.exists(fallback):
+                        return fallback
                     return a_str
                 return os.path.join(_root, a_str)
 

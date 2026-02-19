@@ -9,7 +9,7 @@ import logging
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -445,6 +445,31 @@ def build_protocol_metadata(feature_config: FeatureConfig) -> pd.DataFrame:
     return meta
 
 
+def clone_feature_config_for_tags(feature_config: FeatureConfig, target_tags: set[str]) -> FeatureConfig:
+    """Return a shallow clone of FeatureConfig with protocol lists filtered to target tags.
+
+    This keeps extract runs resilient when some unrelated protocol files are unavailable
+    on a given machine (e.g., requesting only dfeval_test should not require ff/itw/oc
+    CSVs to exist locally).
+    """
+    protocol_tags = list(feature_config.protocol_tags or [])
+    protocol_paths = list(feature_config.protocol_path or [])
+    audio_dirs = list(feature_config.audio_dir or [])
+    path_modes = list(getattr(feature_config, "path_reconstruction_modes", []) or [])
+
+    selected_idx = [idx for idx, tag in enumerate(protocol_tags) if tag in target_tags]
+    if not selected_idx:
+        return feature_config
+
+    cloned = FeatureConfig(**asdict(feature_config))
+    cloned.protocol_tags = [protocol_tags[idx] for idx in selected_idx]
+    cloned.protocol_path = [protocol_paths[idx] for idx in selected_idx if idx < len(protocol_paths)]
+    cloned.audio_dir = [audio_dirs[idx] for idx in selected_idx if idx < len(audio_dirs)]
+    if path_modes:
+        cloned.path_reconstruction_modes = [path_modes[idx] for idx in selected_idx if idx < len(path_modes)]
+    return cloned
+
+
 def filter_split_rows(meta: pd.DataFrame, split_name: str, spec: SplitSpec) -> pd.DataFrame:
     subset = meta[meta["dataset_tag"].isin(spec.dataset_tags)].copy()
     if spec.split_values:
@@ -506,7 +531,15 @@ def extract_split_cache(
     overwrite: bool,
 ) -> Dict[str, Any]:
     if subset.empty:
-        raise RuntimeError(f"No rows matched the '{split_name}' split specification.")
+        return {
+            "split": split_name,
+            "cache_path": str(cache_path.resolve()),
+            "num_examples": 0,
+            "embedding_dim": None,
+            "label_counts": {},
+            "status": "skipped_empty",
+            "reason": "No rows matched split specification after protocol filtering.",
+        }
 
     if cache_path.exists() and not overwrite:
         logging.info("Cache %s already exists; skipping (use --overwrite to rebuild).", cache_path)
@@ -590,7 +623,12 @@ def handle_extract(args: argparse.Namespace, state: RuntimeState) -> int:
     ensure_directory(state.output_run_dir)
 
     logging.info("Loading protocol metadata for speaker '%s'.", state.feature_config.speaker_name)
-    feature_cfg = state.feature_config
+    requested_tags = {
+        tag
+        for split_name in args.splits
+        for tag in DEFAULT_SPLIT_SPECS.get(split_name, SplitSpec([])).dataset_tags
+    }
+    feature_cfg = clone_feature_config_for_tags(state.feature_config, requested_tags)
     feature_cfg.device = state.device
     feature_cfg.extract_fusion_features = False
     meta = build_protocol_metadata(feature_cfg)
