@@ -74,14 +74,11 @@ DEFAULT_SPLIT_SPECS: Dict[str, SplitSpec] = {
     "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation", "eval"]),
     "itw_test": SplitSpec(dataset_tags=["itw"]),
     "dfeval_test": SplitSpec(dataset_tags=["DFEval2024"]),
-    # OC splits: protocol CSV paths are reconstructed from the Great Lakes dataset
-    # root (see FeatureConfig.path_reconstruction_modes and dataset_loader).
-    # oc_train  – bonafide-only rows used to fit the one-class model (the OCSVM
-    #             handler filters to label==1 internally, so all OC rows are safe
-    #             to cache here; swap for a dedicated train CSV if one exists).
-    # oc_test   – full eval set (bonafide + all TTS systems).
-    "oc_train": SplitSpec(dataset_tags=["oc"]),
-    "oc_test": SplitSpec(dataset_tags=["oc"]),
+    # OC splits: oc_protocol_eval1000.csv contains a 'split' column with values
+    # 'train' (bonafide-only training rows) and 'eval' (bonafide + spoof test rows).
+    # Paths are reconstructed from the Great Lakes dataset root (Original → '-').
+    "oc_train": SplitSpec(dataset_tags=["oc"], split_values=["train"]),
+    "oc_test": SplitSpec(dataset_tags=["oc"], split_values=["eval"]),
 }
 
 POSITIVE_LABEL_VALUES = {
