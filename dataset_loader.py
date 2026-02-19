@@ -69,13 +69,16 @@ class AudioDataset(torch.utils.data.Dataset):
                         else "spoof"
                     )
 
-                # 3. Infer Source from the system subdirectory name
+                # 3. Infer Source from the system subdirectory name, prefixed with
+                #    the protocol tag so that infer_dataset_tag() in run_baselines.py
+                #    can map every row back to the correct dataset tag (e.g. "oc").
                 if "Source" not in df.columns:
                     _REAL_ALIASES = frozenset({"original", "real", "bonafide", "genuine"})
+                    _tag = config.protocol_tags[idx]
                     df["Source"] = df["Audio"].apply(
-                        lambda a: "bonafide"
+                        lambda a, _t=_tag: f"{_t}_bonafide"
                         if Path(str(a)).parent.name.lower() in _REAL_ALIASES
-                        else Path(str(a)).parent.name
+                        else f"{_t}_{Path(str(a)).parent.name}"
                     )
 
             for col in required_cols:
