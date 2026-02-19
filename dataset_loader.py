@@ -7,6 +7,7 @@ from torch import Tensor
 import librosa
 import torchaudio.functional as AF
 import random
+from pathlib import Path
 
 class AudioDataset(torch.utils.data.Dataset):
     # def __init__(self, protocol_paths, audio_dir, speaker_name, sep=','):
@@ -19,12 +20,19 @@ class AudioDataset(torch.utils.data.Dataset):
         # Accepts a list or string for protocol files
         if isinstance(protocol_paths, str):
             protocol_paths = [protocol_paths]
-        
+
         # If audio_dir is a list, require it to have same length as protocol_paths
         if isinstance(audio_dir, (list, tuple)):
             if len(audio_dir) != len(protocol_paths):
                 raise ValueError("When passing multiple audio_dir entries, its length must match protocol_paths length")
-        
+
+        # path_reconstruction_modes: one entry per protocol ("auto" or "reconstruct").
+        # "reconstruct" ignores the absolute path stored in the CSV and rebuilds it as:
+        #   <audio_dir_for_df> / <parent_dirname_from_csv> / <basename_from_csv>
+        # This is used when the CSV was created on a different machine and the root
+        # prefix must be replaced with the local dataset root.
+        path_modes = list(getattr(config, 'path_reconstruction_modes', None) or [])
+
         dfs = []
         for idx, p in enumerate(protocol_paths):
             df = pd.read_csv(p, sep=sep)
@@ -34,18 +42,29 @@ class AudioDataset(torch.utils.data.Dataset):
                         df[col] = config.protocol_tags[idx] + '_' + df['Label'].astype(str)
                     else:
                         df[col] = None
-            
+
             df = df[required_cols]
 
             # Use the corresponding audio_dir for each protocol file when audio_dir is a list.
             audio_dir_for_df = audio_dir[idx] if isinstance(audio_dir, (list, tuple)) else audio_dir
 
-            # Prepend audio_dir to Audio entries that are not absolute paths
-            def _join_audio_path(a):
+            path_mode = path_modes[idx] if idx < len(path_modes) else "auto"
+
+            def _join_audio_path(a, _mode=path_mode, _root=audio_dir_for_df):
                 a_str = str(a)
+                if _mode == "reconstruct":
+                    # Extract <system_subdir>/<filename> from whatever path is stored
+                    # in the CSV and graft it onto the local dataset root.
+                    parts = Path(a_str).parts
+                    if len(parts) >= 2:
+                        rel_path = os.path.join(parts[-2], parts[-1])
+                    else:
+                        rel_path = parts[-1]
+                    return os.path.join(_root, rel_path)
+                # Default "auto" mode: keep absolute paths as-is, prepend root otherwise.
                 if os.path.isabs(a_str):
                     return a_str
-                return os.path.join(audio_dir_for_df, a_str)
+                return os.path.join(_root, a_str)
 
             df['Audio'] = df['Audio'].astype(str).apply(_join_audio_path)
             dfs.append(df)
