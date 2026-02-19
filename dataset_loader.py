@@ -44,6 +44,10 @@ class AudioDataset(torch.utils.data.Dataset):
                 )
                 continue
             df = pd.read_csv(p, sep=sep)
+            # Strip BOM (\ufeff) and surrounding whitespace from column names.
+            # Some CSV files created on Windows or by certain tools embed a BOM
+            # at the start of the file, turning "Audio" into "\ufeffAudio".
+            df.columns = [c.lstrip('\ufeff').strip() for c in df.columns]
 
             # Normalize common lowercase/aliased column names to canonical names.
             # Handles protocols like the itw meta.csv that use "file"/"speaker"/"label"
