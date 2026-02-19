@@ -71,7 +71,7 @@ class SplitSpec:
 
 DEFAULT_SPLIT_SPECS: Dict[str, SplitSpec] = {
     "ff_train": SplitSpec(dataset_tags=["ff"], split_values=["train"]),
-    "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation"]),
+    "ff_val": SplitSpec(dataset_tags=["ff"], split_values=["val", "dev", "validation", "eval"]),
     "itw_test": SplitSpec(dataset_tags=["itw"]),
     "dfeval_test": SplitSpec(dataset_tags=["DFEval2024"]),
     # OC splits: protocol CSV paths are reconstructed from the Great Lakes dataset

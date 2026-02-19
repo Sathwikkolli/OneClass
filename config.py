@@ -17,31 +17,31 @@ class FeatureConfig:
     # protocol_path: list = field(default_factory=lambda: ["/data/FF_V2/FF_V2_meta_Data/protocol_Kamala_Harris.csv", "/data/Data/ds_wild/protocols/meta.csv"])
     # protocol_tags: list = field(default_factory=lambda: ["ff", "itw"])
     audio_dir: list = field(default_factory=lambda: [
-        "/data/FF_V2/FF_V2/",
+        # FF + OC: both datasets live under the same Great Lakes root.
+        # Reals are in the '-' subdirectory; each TTS system has its own subdir.
+        # Path reconstruction maps the old '/data/FF_V2/…/Original/' prefix to
+        # '<root>/Donald_Trump/-/' automatically (see path_reconstruction_modes).
+        "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
         "/data/Data/ds_wild/release_in_the_wild/",
         "/data/Data/Deepfake_Eval_2024/audio-data",
-        # OC eval: dataset root on Great Lakes. Reals live under the '-' subdirectory;
-        # each TTS system has its own subdirectory (COZYVOICE2, E2TTS, F5TTS, …).
-        # The path is reconstructed from <system_subdir>/<filename> extracted out of
-        # whatever absolute path is stored in the CSV (see path_reconstruction_modes).
         "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/Donald_Trump",
     ])
     protocol_path: list = field(default_factory=lambda: [
-        "/data/FF_V2/FF_V2_meta_Data/protocol_Donald_Trump_v1.csv",
+        # FF protocol lives at the famousfigures root on Great Lakes.
+        "/nfs/turbo/umd-hafiz/issf_server_data/famousfigures/protocol_Donald_Trump_v1.csv",
         "/data/Data/ds_wild/protocols/meta.csv",
         "/data/Data/Deepfake_Eval_2024/protocols/final_Deepfakeeval2024_Speakerverification.csv",
-        # OC eval protocol: 1 000-sample evaluation set for the Donald Trump speaker.
-        # Place the CSV at the repo root or override via FeatureConfig at runtime.
+        # OC eval protocol: evaluation set for the Donald Trump speaker.
         "oc_protocol_eval1000.csv",
     ])
     protocol_tags: list = field(default_factory=lambda: ["ff", "itw", "DFEval2024", "oc"])
     # Per-protocol path handling.  "auto" keeps absolute paths unchanged and prepends
     # audio_dir only for relative ones.  "reconstruct" ignores the root stored in the
-    # CSV and rebuilds the path as <audio_dir>/<system_subdir>/<filename>, which is
-    # required when the CSV was produced on a different machine (e.g. Great Lakes).
-    path_reconstruction_modes: list = field(default_factory=lambda: ["auto", "auto", "auto", "reconstruct"])
+    # CSV and rebuilds the path as <audio_dir>/<system_subdir>/<filename>, mapping
+    # 'Original' → '-' for Great Lakes layout.
+    path_reconstruction_modes: list = field(default_factory=lambda: ["reconstruct", "auto", "auto", "reconstruct"])
     sep = ','  # or '\t' for tsv files
-    required_cols: List[str] = field(default_factory=lambda: ["Audio", "Label", "Speaker", "Source"])
+    required_cols: List[str] = field(default_factory=lambda: ["Audio", "Label", "Speaker", "Source", "split"])
     
     # output_layer: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     # output_layer: list = field(default_factory=lambda: [7, 8, 9, 10, 11, 12])
